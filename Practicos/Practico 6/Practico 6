@@ -1,0 +1,336 @@
+-- 1) Devuelva la oficina con mayor número de empleados.
+
+select offices_count.office as officeCode, max(offices_count.employees) as employees_number
+from (  select o.officeCode as office, count(e.employeeNumber) as employees
+        from offices as o
+        inner join employees as e
+        on e.officeCode = o.officeCode
+        group by office) as offices_count;
+
++------------+------------------+
+| officeCode | employees_number |
++------------+------------------+
+| 1          |                6 |
++------------+------------------+
+
+-- 2) ¿Cuál es el promedio de órdenes hechas por oficina?, 
+-- ¿Qué oficina vendió la mayor cantidad de productos?
+
+-- Orders => customers
+-- Customers => employees
+-- Employees => offices
+
+-- Quiero saber cuantas ordenes tiene un cliente
+-- cliente_id, empleadoAsociado, ordenes_totales
+-- Luego, quiero saber cuantas ordenes realizo un empleado
+-- empleado_id, ordenes_totales
+-- finalmente quiero saber
+-- cuantas ordenes tiene una oficina
+
+
+-- Ordenes totales por oficina
+
+with 
+    clientes_ordenes as (
+        select c.customerNumber as cliente_id, c.salesRepEmployeeNumber as empleado_id, count(o.orderNumber) as ordenes
+        from customers as c
+        join orders as o
+        on o.customerNumber = c.customerNumber
+        group by cliente_id
+        order by empleado_id desc
+    ),
+    empleados_ordenes as (
+        select clientes_ordenes.empleado_id as empleado_id, sum(clientes_ordenes.ordenes) as ordenes
+        from clientes_ordenes
+        group by empleado_id
+        order by empleado_id desc
+    )
+select e.officeCode as officeCode, sum(e_o.ordenes) as ordenes
+from empleados_ordenes as e_o
+join employees as e
+on e.employeeNumber = e_o.empleado_id
+group by officeCode;
+
++------------+---------+
+| officeCode | ordenes |
++------------+---------+
+| 4          |     106 |
+| 5          |      16 |
+| 6          |      38 |
+| 7          |      47 |
+| 3          |      39 |
+| 2          |      32 |
+| 1          |      48 |
++------------+---------+
+
+-- Promedio de venta por oficina
+
+with 
+    clientes_ordenes as (
+        select c.customerNumber as cliente_id, c.salesRepEmployeeNumber as empleado_id, count(o.orderNumber) as ordenes
+        from customers as c
+        join orders as o
+        on o.customerNumber = c.customerNumber
+        group by cliente_id
+        order by empleado_id desc
+    ),
+    empleados_ordenes as (
+        select clientes_ordenes.empleado_id as empleado_id, sum(clientes_ordenes.ordenes) as ordenes
+        from clientes_ordenes
+        group by empleado_id
+        order by empleado_id desc
+    ),
+    oficinas_ordenes as (
+        select e.officeCode as officeCode, sum(e_o.ordenes) as ordenes
+        from empleados_ordenes as e_o
+        join employees as e
+        on e.employeeNumber = e_o.empleado_id
+        group by officeCode
+    )
+select avg(o_o.ordenes) as promedio_de_venta
+from oficinas_ordenes as o_o;
+
++-------------------+
+| promedio_de_venta |
++-------------------+
+|           46.5714 |
++-------------------+
+
+-- Ej3) Devolver el valor promedio, máximo y mínimo de pagos que se hacen por mes.
+
+select avg(t_p.total_payments) as avg_payments, min(t_p.total_payments) as min_payment, max(t_p.total_payments) as max_payment
+from (
+    select month(paymentDate) as month, count(*) as total_payments
+    from payments
+    group by month) as t_p;
+
++--------------+-------------+-------------+
+| avg_payments | min_payment | max_payment |
++--------------+-------------+-------------+
+|      22.7500 |          13 |          43 |
++--------------+-------------+-------------+
+
+-- Ej4) Crear un procedimiento "Update Credit" en donde se modifique 
+-- el límite de crédito de un cliente con un valor pasado por parámetro.
+
+-- Un procedimiento puede tomar parametros de entrada y salida
+-- (in p1 varchar(20), out p2 integer)
+-- al llamar el procedimiento hacemos
+-- declare p2 integer;
+-- call proc(p1, p2);
+
+DELIMITER //
+
+CREATE PROCEDURE update_credit(in customer_id int, in new_limit decimal(10,2))
+BEGIN
+    update customers
+    set creditLimit = new_limit
+    where customerNumber = customer_id;
+END //
+
+select creditLimit from customers where customerNumber = 103;
++-------------+
+| creditLimit |
++-------------+
+|    21000.00 |
++-------------+
+
+call update_credit(103, 21212.15);
+
+select creditLimit from customers where customerNumber = 103;
++-------------+
+| creditLimit |
++-------------+
+|    21212.15 |
++-------------+
+
+-- Ej5) Cree una vista "Premium Customers" que devuelva el 
+-- top 10 de clientes que más dinero han gastado en la plataforma. 
+-- La vista deberá devolver el nombre del cliente, la ciudad y el
+-- total gastado por ese cliente en la plataforma.
+
+-- CREATE VIEW v AS <query expression>; solo consultas, no guarda nada, datos frescos
+-- CREATE MATERIALIZED VIEW v AS <query expression>; guarda los datos calculados, es mas eficiente, es una tabla fisica
+
+create view premium_customers as 
+select c.customerName as client_name, c.city as city, sum(p.amount) as total_spent
+from customers as c
+inner join payments as p
+on p.customerNumber = c.customerNumber
+group by c.customerNumber
+order by total_spent desc
+limit 10;
+
+select * from premium_customers;
+
++------------------------------+---------------+-------------+
+| client_name                  | city          | total_spent |
++------------------------------+---------------+-------------+
+| Euro+ Shopping Channel       | Madrid        |   715738.98 |
+| Mini Gifts Distributors Ltd. | San Rafael    |   584188.24 |
+| Australian Collectors, Co.   | Melbourne     |   180585.07 |
+| Muscle Machine Inc           | NYC           |   177913.95 |
+| Dragon Souveniers, Ltd.      | Singapore     |   156251.03 |
+| Down Under Souveniers, Inc   | Auckland      |   154622.08 |
+| AV Stores, Co.               | Manchester    |   148410.09 |
+| Annas Decorations, Ltd       | North Sydney  |   137034.22 |
+| Corporate Gift Ideas Co.     | San Francisco |   132340.78 |
+| Saveley & Henriot, Co.       | Lyon          |   130305.35 |
++------------------------------+---------------+-------------+
+
+-- Ej6) Cree una función "employee of the month" que tome un 
+-- mes y un año y devuelve el empleado (nombre y apellido) cuyos 
+-- clientes hayan efectuado la mayor cantidad de órdenes en ese mes.
+
+DELIMITER $$
+CREATE FUNCTION employee_of_the_monthh(monthNumber INT, yearNumber INT)
+RETURNS VARCHAR(50)
+DETERMINISTIC
+BEGIN
+    DECLARE employee VARCHAR(50);
+    SET employee = (
+            SELECT  CONCAT(e.firstName, ' ', e.lastName) as employee
+            FROM employees AS e
+            JOIN customers AS c ON c.salesRepEmployeeNumber = e.employeeNumber
+            JOIN orders AS o ON o.customerNumber = c.customerNumber
+            WHERE MONTH(o.orderDate) = monthNumber AND YEAR(o.orderDate) = yearNumber
+            GROUP BY employee
+            ORDER BY COUNT(o.orderNumber) DESC
+            LIMIT 1
+    );
+
+    RETURN employee;
+END $$
+DELIMITER $$
+
+mysql> select employee_of_the_monthh(1,2005);
++--------------------------------+
+| employee_of_the_monthh(1,2005) |
++--------------------------------+
+| Leslie Jennings                |
++--------------------------------+
+
+-- 7) Crear una nueva tabla "Product Refillment". Deberá tener una relación varios a 
+-- uno con "products" y los campos: `refillmentID`, `productCode`, `orderDate`, `quantity`.
+
+create table product_refillment(
+    refillmentID int not null auto_increment primary key,
+    productCode varchar(15) not null,
+    orderDate datetime not null,
+    quantity int not null,
+    constraint fk_product_refillment foreign key (productCode) references products (productCode) on delete restrict on update cascade
+    );
+
+-- 8) Definir un trigger "Restock Product" que esté pendiente de los cambios efectuados 
+-- en `orderdetails` y cada vez que se agregue una nueva orden revise la cantidad de productos
+-- pedidos (`quantityOrdered`) y compare con la cantidad en stock (`quantityInStock`) y si es 
+-- menor a 10 genere un pedido en la tabla "Product Refillment" por 10 nuevos productos.
+
+DELIMITER //
+
+create trigger restock_product after insert
+on orderdetails for each row
+begin 
+    declare in_stock int;
+
+    select quantityInStock into in_stock
+    from products
+    where NEW.productCode = productCode;
+
+    if in_stock - NEW.quantityOrdered < 10 then  
+        insert into product_refillment (productCode, orderDate, quantity)
+        values (NEW.productCode, NOW(), 10);
+    end if;
+
+end;
+//
+
+DELIMITER;
+
+
+select * from products where quantityInStock = 15;
+
++-------------+--------------------------+-------------+--------------+--------------------------+-----------------------------------------------------------------------------------+-----------------+----------+-------+
+| productCode | productName              | productLine | productScale | productVendor            | productDescription                                                                | quantityInStock | buyPrice | MSRP  |
++-------------+--------------------------+-------------+--------------+--------------------------+-----------------------------------------------------------------------------------+-----------------+----------+-------+
+| S24_2000    | 1960 BSA Gold Star DBD34 | Motorcycles | 1:24         | Highway 66 Mini Classics | Detailed scale replica with working suspension and constructed from over 70 parts |              15 |    37.32 | 76.17 |
++-------------+--------------------------+-------------+--------------+--------------------------+-----------------------------------------------------------------------------------+-----------------+----------+-------+
+
+select * from product_refillment;
+Empty set (0.00 sec)
+
+insert into orderdetails (orderNumber, productCode, quantityOrdered, priceEach, orderLineNumber)
+values (10374,'S24_2000', 10, 10.20, 1);
+Query OK, 1 row affected (0.00 sec)
+
+select * from product_refillment;
++--------------+-------------+---------------------+----------+
+| refillmentID | productCode | orderDate           | quantity |
++--------------+-------------+---------------------+----------+
+|            1 | S24_2000    | 2025-10-01 20:47:45 |       10 |
++--------------+-------------+---------------------+----------+
+
+-- 9) Crear un rol "Empleado" en la BD que establezca accesos de lectura a todas las tablas 
+-- y accesos de creación de vistas.
+
+
+create role 'Empleado';
+grant select on classicmodels.* to 'Empleado';
+grant create view on classicmodels.* to 'Empleado';
+
+-- Consultas Adicionales
+-- Las siguientes consultas son más difíciles:
+
+-- 10) Encontrar, para cada cliente de aquellas ciudades que comienzan por 'N', la menor 
+-- y la mayor diferencia en días entre las fechas de sus pagos. No mostrar el id del cliente, 
+-- sino su nombre y el de su contacto.
+
+SELECT  c.customerName AS CustomerName, 
+        c.city AS City, 
+        MIN((DATEDIFF(p.paymentDate, p1.paymentDate))) AS min_payment,
+        MAX((DATEDIFF(p.paymentDate, p1.paymentDate))) AS max_payment
+FROM customers AS c
+JOIN payments AS p ON p.customerNumber = c.customerNumber
+JOIN payments AS p1 
+    ON p1.customerNumber = c.customerNumber 
+    AND p1.checkNumber != p.checkNumber
+    AND p.paymentDate > p1.paymentDate
+WHERE c.city LIKE 'N%'
+GROUP BY CustomerName, City;
+
++------------------------------+--------------+-------------+-------------+
+| CustomerName                 | City         | min_payment | max_payment |
++------------------------------+--------------+-------------+-------------+
+| Atelier graphique            | Nantes       |          60 |         562 |
+| La Rochelle Gifts            | Nantes       |          98 |         198 |
+| Land of Toys Inc.            | NYC          |          82 |         631 |
+| Muscle Machine Inc           | NYC          |         141 |         545 |
+| Vitachrome Inc.              | NYC          |         205 |         656 |
+| Annas Decorations,  Ltd      | North Sydney |          46 |         580 |
+| Mini Creations Ltd.          | New Bedford  |          96 |         517 |
+| Tekni Collectables Inc.      | Newark       |          44 |          44 |
+| Online Diecast Creations Co. | Nashua       |         323 |         671 |
+| Classic Legends Inc.         | NYC          |         198 |         601 |
+| Super Scale Inc.             | New Haven    |         159 |         159 |
+| Microscale Inc.              | NYC          |         197 |         197 |
+| FunGiftIdeas.com             | New Bedford  |         139 |         524 |
++------------------------------+--------------+-------------+-------------+
+
+-- 11) Encontrar el nombre y la cantidad vendida total de los 10 productos más vendidos 
+-- que, a su vez, representen al menos el 4% del total de productos, contando unidad por unidad, 
+-- de todas las órdenes donde intervienen. No utilizar LIMIT.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
