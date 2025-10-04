@@ -1,0 +1,1 @@
+Personal repository with MySQL practice exercises. Includes queries, stored procedures, triggers, functions, and examples of roles and permissions. Intended as practice, reference, and review of relational database concepts.
