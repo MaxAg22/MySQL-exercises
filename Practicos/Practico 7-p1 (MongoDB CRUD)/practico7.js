@@ -5,6 +5,8 @@
 // si tiene json y bjson
 // mongorestore --uri="mongodb://localhost:27017" --db=mflix --gzip mflix
 
+// mongorestore --uri="mongodb://localhost:27017" --db=mflix C:\Users\Usuario\Downloads\grades
+
 // si es un json solo
 // mongoimport --uri="mongodb://localhost:27017" --db=restaurantdb --collection=name --file="path\file.json"
 
